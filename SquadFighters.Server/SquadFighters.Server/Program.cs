@@ -9,7 +9,7 @@ namespace SquadFighters.Server {
         static void Main(string[] args) {
 
             //יצירת סרבר:
-            Server server = new Server("192.168.1.17", 7895);
+            Server server = new Server("127.0.0.1", 7895);
 
             //התחלת השרת:
             server.Start();
