@@ -111,17 +111,17 @@ Items are scattered across the map and spawn in randomized locations.
 
 ## Tech Stack
 
-- Client: C#, MonoGame DesktopGL, .NET 8 (SquadFighters.Client)
-- Server: C#, .NET Framework 4.7.2 (SquadFighters.Server)
+- Client: C#, MonoGame DesktopGL, .NET 10 (SquadFighters.Client)
+- Server: C#, .NET Framework 4.8 (SquadFighters.Server)
 
 ## Getting Started
 
 ### Prerequisites
 
 - Windows
-- .NET 8 SDK
+- .NET 10 SDK
 - Visual Studio 2022 (recommended)
-- .NET Framework 4.7.2 Developer Pack (for the server project)
+- .NET Framework 4.8 Developer Pack (for the server project)
 
 ### Installation
 
