@@ -1,4 +1,4 @@
 <Solution>
   <Project Path="SquadFighters.Client/SquadFighters.Client.csproj" />
-  <Project Path="SquadFighters.Server/SquadFighters.Server.csproj" />
+  <Project Path="SquadFighters.Server/SquadFighters.Server.csproj" Id="a8ea4bc9-9e05-46e6-9e9b-ccf00d57bb40" />
 </Solution>
