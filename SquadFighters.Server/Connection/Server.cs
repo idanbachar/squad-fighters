@@ -8,6 +8,7 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ServerOpcode = SquadFighters.Server.ServerMethod;
 
 namespace SquadFighters.Server {
     public class Server {
@@ -112,7 +113,7 @@ namespace SquadFighters.Server {
                     Console.WriteLine(e.Message);
                 }
 
-                SendOneDataToClient(client, ServerMethod.MapDataDownloadCompleted.ToString());
+                SendOneDataToClient(client, ServerOpcode.MapDataDownloadCompleted.ToString());
 
                 break;
             }
@@ -156,7 +157,7 @@ namespace SquadFighters.Server {
         /// </summary>
         public void SendPlayersInTeamsCount() {
             while (true) {
-                string message = ServerMethod.TeamsPlayersCounts.ToString() + "=true,Alpha=" + Teams[TeamName.Alpha.ToString()].PlayersCount + ",Beta=" + Teams[TeamName.Beta.ToString()].PlayersCount + ",Omega=" + Teams[TeamName.Omega.ToString()].PlayersCount;
+                string message = ServerOpcode.TeamsPlayersCounts.ToString() + "=true,Alpha=" + Teams[TeamName.Alpha.ToString()].PlayersCount + ",Beta=" + Teams[TeamName.Beta.ToString()].PlayersCount + ",Omega=" + Teams[TeamName.Omega.ToString()].PlayersCount;
                 SendDataToAllClients(message);
 
                 Thread.Sleep(1000);
@@ -168,7 +169,7 @@ namespace SquadFighters.Server {
         /// </summary>
         public void SendCoinsInTeamsCount() {
             while (true) {
-                string message = ServerMethod.TeamsCoinsCount.ToString() + "=true,Alpha=" + Teams[TeamName.Alpha.ToString()].CoinsCount + ",Beta=" + Teams[TeamName.Beta.ToString()].CoinsCount + ",Omega=" + Teams[TeamName.Omega.ToString()].CoinsCount;
+                string message = ServerOpcode.TeamsCoinsCount.ToString() + "=true,Alpha=" + Teams[TeamName.Alpha.ToString()].CoinsCount + ",Beta=" + Teams[TeamName.Beta.ToString()].CoinsCount + ",Omega=" + Teams[TeamName.Omega.ToString()].CoinsCount;
                 SendDataToAllClients(message);
 
                 Thread.Sleep(500);
@@ -189,7 +190,7 @@ namespace SquadFighters.Server {
                     string data = Encoding.ASCII.GetString(bytes);
                     string message = data.Substring(0, data.IndexOf("\0"));
 
-                    if (message.Contains(ServerMethod.PlayerConnected.ToString())) {
+                    if (message.Contains(ServerOpcode.PlayerConnected.ToString())) {
                         CurrentConnectedPlayerName = message.Split(',')[0];
                         lock (Clients) {
                             Clients.Add(CurrentConnectedPlayerName, new Player(client, CurrentConnectedPlayerName));
@@ -199,43 +200,43 @@ namespace SquadFighters.Server {
                         Print(CurrentConnectedPlayerName + " Connected to server.");
                         CurrentConnectedPlayerName = string.Empty;
                     }
-                    else if (message == ServerMethod.StartDownloadMapData.ToString()) {
+                    else if (message == ServerOpcode.StartDownloadMapData.ToString()) {
                         SendItemsDataToClient(client);
                     }
-                    else if (message.Contains(ServerMethod.PlayerData.ToString())) {
+                    else if (message.Contains(ServerOpcode.PlayerData.ToString())) {
                         // Print(message);
                         SendDataToAllClients(message, client);
                     }
-                    else if (message.Contains(ServerMethod.ShootData.ToString())) {
+                    else if (message.Contains(ServerOpcode.ShootData.ToString())) {
                         Print(message);
                         SendDataToAllClients(message, client);
                     }
-                    else if (message.Contains(ServerMethod.Revive.ToString())) {
+                    else if (message.Contains(ServerOpcode.Revive.ToString())) {
                         Print(message);
                         SendDataToAllClients(message, client);
                     }
-                    else if (message.Contains(ServerMethod.JoinedMatch.ToString())) {
+                    else if (message.Contains(ServerOpcode.JoinedMatch.ToString())) {
                         string playerTeam = message.Split(',')[2];
                         Teams[playerTeam].AddPlayer();
 
                         Print(message);
                         SendDataToAllClients(message, client);
                     }
-                    else if (message.Contains(ServerMethod.PlayerPopupMessage.ToString())) {
+                    else if (message.Contains(ServerOpcode.PlayerPopupMessage.ToString())) {
                         string popup = message.Split(',')[1].Split('=')[1];
 
                         Print(popup);
                         SendDataToAllClients(message);
                     }
-                    else if (message.Contains(ServerMethod.PlayerKilled.ToString())) {
+                    else if (message.Contains(ServerOpcode.PlayerKilled.ToString())) {
                         Print(message);
                         SendDataToAllClients(message, client);
                     }
-                    else if (message.Contains(ServerMethod.PlayerDrown.ToString())) {
+                    else if (message.Contains(ServerOpcode.PlayerDrown.ToString())) {
                         Print(message);
                         SendDataToAllClients(message, client);
                     }
-                    else if (message.Contains(ServerMethod.UpdateSpawnerCoins.ToString())) {
+                    else if (message.Contains(ServerOpcode.UpdateSpawnerCoins.ToString())) {
                         Print(message);
 
                         if (message.Contains("AlphaTeam")) {
@@ -251,7 +252,7 @@ namespace SquadFighters.Server {
                             Teams["Omega"].SetCoins(coinsCount);
                         }
                     }
-                    else if (message.Contains(ServerMethod.ClientCreateItem.ToString())) {
+                    else if (message.Contains(ServerOpcode.ClientCreateItem.ToString())) {
                         Print(message);
 
                         int playerX = int.Parse(message.Split(',')[1].Split('=')[1]);
@@ -259,7 +260,7 @@ namespace SquadFighters.Server {
                         int coinsCount = int.Parse(message.Split(',')[3].Split('=')[1]);
                         new Thread(() => CreateDroppedCoins(playerX, playerY, coinsCount)).Start();
                     }
-                    else if (message.Contains(ServerMethod.RemoveItem.ToString())) {
+                    else if (message.Contains(ServerOpcode.RemoveItem.ToString())) {
                         string key = message.Split(',')[1];
                         lock (Map.Items) {
                             Map.Items.Remove(key);
@@ -267,7 +268,7 @@ namespace SquadFighters.Server {
                         SendDataToAllClients(message);
                         Print(message);
                     }
-                    else if (message.Contains(ServerMethod.UpdateItemCapacity.ToString())) {
+                    else if (message.Contains(ServerOpcode.UpdateItemCapacity.ToString())) {
                         string receivedKey = message.Split(',')[2];
                         string receivedCapacityString = "Capacity=" + message.Split(',')[1];
                         lock (Map.Items) {
@@ -300,7 +301,7 @@ namespace SquadFighters.Server {
                 Position coinPosition = new Position(playerX + 60 * i, playerY + 100 + new Random().Next(30, 60)); //GeneratePosition();
                 CoinType coinType = CoinType.IB;
                 string itemKey = itemToAdd.ToString() + "/" + coinType.ToString() + "/" + ((int)Map.Items.Count + 10 + new Random().Next(1000, 5001));
-                string item = ServerMethod.DownloadDroppedCoins.ToString() + "=true,ItemCategory=" + (int)ItemCategory.Coin + ",CoinType=" + (int)coinType + ",X=" + coinPosition.X + ",Y=" + coinPosition.Y + ",Capacity=" + 25 + ",Key=" + itemKey + ",MaxItems=" + Map.MaxItems;
+                string item = ServerOpcode.DownloadDroppedCoins.ToString() + "=true,ItemCategory=" + (int)ItemCategory.Coin + ",CoinType=" + (int)coinType + ",X=" + coinPosition.X + ",Y=" + coinPosition.Y + ",Capacity=" + 25 + ",Key=" + itemKey + ",MaxItems=" + Map.MaxItems;
                 Map.Items.Add(itemKey, item);
 
                 SendDataToAllClients(item);
@@ -325,21 +326,21 @@ namespace SquadFighters.Server {
         /// <param name="message"></param>
         /// <param name="blackListedClient"></param>
         public void SendDataToAllClients(string message, TcpClient blackListedClient = null) {
-            foreach (KeyValuePair<string, Player> player in Clients) {
-                try {
+            try {
+                foreach (KeyValuePair<string, Player> player in Clients) {
                     NetworkStream netStream = player.Value.Client.GetStream();
                     byte[] bytes = Encoding.ASCII.GetBytes(message);
 
                     if (player.Value.Client != blackListedClient)
                         netStream.Write(bytes, 0, bytes.Length);
 
+                        Thread.Sleep(10);
                 }
-                catch (Exception e) {
-                    Console.WriteLine(e.Message);
-                    //DisconnectPlayer(player.Value.Client, player.Value.Name);
-                }
-
-                Thread.Sleep(10);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                //DisconnectPlayer(player.Value.Client, player.Value.Name);
             }
         }
 
@@ -351,7 +352,7 @@ namespace SquadFighters.Server {
         public void DisconnectPlayer(TcpClient client, string key) {
             client.Close();
             Clients.Remove(key);
-            SendDataToAllClients(ServerMethod.PlayerDisconnected.ToString() + "=true,playerDisconnectedName=" + key);
+            SendDataToAllClients(ServerOpcode.PlayerDisconnected.ToString() + "=true,playerDisconnectedName=" + key);
         }
     }
 }

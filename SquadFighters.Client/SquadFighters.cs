@@ -9,6 +9,7 @@ using System.Threading;
 using System.Text;
 using System.Linq;
 using Microsoft.Xna.Framework.Audio;
+using ServerOpcode = SquadFighters.Client.ServerMethod;
 
 namespace SquadFighters.Client {
     public class SquadFighters : Game {
@@ -62,7 +63,7 @@ namespace SquadFighters.Client {
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
             Players = new Dictionary<string, Player>();
-            ServerIp = "192.168.1.17";
+            ServerIp = "127.0.0.1";
             ServerPort = 7895;
             Window.Title = "SquadFighters: Battle Royale";
             GameState = GameState.MainMenu;
@@ -80,12 +81,12 @@ namespace SquadFighters.Client {
         }
 
         //חיבור לשרת של המשחק
-        public void ConnectToServer(string serverIp, int serverPort) {
+        public void ConnectToServer() {
             // נסה להתחבר לשרת
             try {
                 Client = new TcpClient(ServerIp, ServerPort); //ניסיון התחברות לשרת
 
-                SendOneDataToServer(ServerMethod.StartDownloadMapData.ToString()); //במידה והצליח שלח לשרת הודעת טעינת מפה
+                SendOneDataToServer(ServerOpcode.StartDownloadMapData.ToString()); //במידה והצליח שלח לשרת הודעת טעינת מפה
                 ReceiveThread = new Thread(ReceiveDataFromServer);
                 ReceiveThread.Start();
 
@@ -119,7 +120,7 @@ namespace SquadFighters.Client {
             HUD.PlayerCard.Visible = true;
             HUD.PlayerCard.LoadContent(Content);
 
-            ConnectToServer(ServerIp, ServerPort);
+            ConnectToServer();
         }
 
         public void JoinMatch() {
@@ -127,7 +128,7 @@ namespace SquadFighters.Client {
             Player.SpawnOnTeamSpawner(Map.AlphaTeamSpawner, Map.BetaTeamSpawner, Map.OmegaTeamSpawner);
             Player.Visible = true;
 
-            SendOneDataToServer(Player.Name + "," + ServerMethod.JoinedMatch + "," + Player.Team);
+            SendOneDataToServer(Player.Name + "," + ServerOpcode.JoinedMatch + "," + Player.Team);
 
             //והתחל לשלוח באופן חוזר מידע על השחקן הנוכחי
             SendPlayerDataThread = new Thread(() => SendPlayerDataToServer());
@@ -193,15 +194,26 @@ namespace SquadFighters.Client {
                 try {
                     NetworkStream netStream = Client.GetStream();
                     byte[] bytes = new byte[10024];
+                    int bytesRead = 0;
                     lock (netStream) {
-                        netStream.Read(bytes, 0, bytes.Length);
+                        bytesRead = netStream.Read(bytes, 0, bytes.Length);
                     }
-                    string data = Encoding.ASCII.GetString(bytes);
-                    string ReceivedDataString = data.Substring(0, data.IndexOf("\0"));
+
+                    if (bytesRead <= 0) {
+                        Thread.Sleep(20);
+                        continue;
+                    }
+
+                    string ReceivedDataString = Encoding.ASCII.GetString(bytes, 0, bytesRead).Trim('\0', '\r', '\n', ' ');
+                    if (string.IsNullOrWhiteSpace(ReceivedDataString)) {
+                        Thread.Sleep(20);
+                        continue;
+                    }
+
                     ReceivedDataArray = ReceivedDataString.Split(','); //מערך שבו כל הפרמטרים מופרדים באמצעות פסיקים
 
                     //בדיקה אם התחבר שחקן
-                    if (ReceivedDataString.Contains(ServerMethod.PlayerConnected.ToString())) {
+                    if (ReceivedDataString.Contains(ServerOpcode.PlayerConnected.ToString())) {
                         string CurrentConnectedPlayerName = ReceivedDataString.Split(',')[0];
 
                         if (CurrentConnectedPlayerName != Player.Name) {
@@ -211,7 +223,7 @@ namespace SquadFighters.Client {
                             Console.WriteLine(ReceivedDataString);
                         }
                     } //בדיקה אם במידע שהתקבל מופיע שם השחקן, ובמידה וכן עדכן את הנתונים שלו
-                    else if (ReceivedDataString.Contains(ServerMethod.PlayerData.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.PlayerData.ToString())) {
                         string playerName = ReceivedDataArray[1].Split('=')[1];
                         float playerX = float.Parse(ReceivedDataArray[2].Split('=')[1]);
                         float playerY = float.Parse(ReceivedDataArray[3].Split('=')[1]);
@@ -286,7 +298,7 @@ namespace SquadFighters.Client {
                         }
 
                     } //במידה והמידע שהתקבל מכיל בתוכו הוספת פריט
-                    else if (ReceivedDataString.Contains(ServerMethod.DownloadingItem.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.DownloadingItem.ToString())) {
                         ItemCategory ItemCategory = (ItemCategory)int.Parse(ReceivedDataArray[1].Split('=')[1]); //קטגוריית פריט
                         int type = int.Parse(ReceivedDataArray[2].Split('=')[1].ToString()); // סוג פריט
                         float itemX = float.Parse(ReceivedDataArray[3].Split('=')[1].ToString()); //קורדינטת X של הפריט
@@ -302,14 +314,14 @@ namespace SquadFighters.Client {
                         Console.WriteLine(ReceivedDataString);
 
                     } //במידה והמידע שהתקבל מכיל מחיקת פריט
-                    else if (ReceivedDataString.Contains(ServerMethod.RemoveItem.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.RemoveItem.ToString())) {
                         string itemKey = ReceivedDataArray[1];
                         lock (Map.Items) {
                             Map.Items.Remove(itemKey); //הסר את הפריט שהתקבל
                         }
                         Console.WriteLine(ReceivedDataString);
                     }//במידע והמידע שהתקבל מכיל עדכון כמות פריט
-                    else if (ReceivedDataString.Contains(ServerMethod.UpdateItemCapacity.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.UpdateItemCapacity.ToString())) {
                         string itemKey = ReceivedDataArray[2];
                         int receivedCapacity = int.Parse(ReceivedDataArray[1]);
 
@@ -325,26 +337,26 @@ namespace SquadFighters.Client {
                         Console.WriteLine(ReceivedDataString);
 
                     } //במידה והמידע שהתקבל מכיל טעינת פריטים הסתיימה
-                    else if (ReceivedDataString == ServerMethod.MapDataDownloadCompleted.ToString()) {
+                    else if (ReceivedDataString == ServerOpcode.MapDataDownloadCompleted.ToString()) {
                         //מצב משחק יתחלף למשחק
                         GameState = GameState.ChooseTeam;
 
                         //שלח הודעה לשרת שהצטרף שחקן
-                        SendOneDataToServer(Player.Name + "," + ServerMethod.PlayerConnected);
+                        SendOneDataToServer(Player.Name + "," + ServerOpcode.PlayerConnected);
 
                     }
-                    else if (ReceivedDataString == ServerMethod.PlayerDisconnected.ToString()) {
+                    else if (ReceivedDataString == ServerOpcode.PlayerDisconnected.ToString()) {
                         string playerName = ReceivedDataArray[1].Split('=')[1];
 
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.DownloadDroppedCoins.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.DownloadDroppedCoins.ToString())) {
                         int playerX = int.Parse(ReceivedDataArray[3].Split('=')[1]);
                         int playerY = int.Parse(ReceivedDataArray[4].Split('=')[1]);
                         string itemKey = ReceivedDataArray[6].Split('=')[1];
                         Map.AddItem(ItemCategory.Coin, 0, playerX, playerY, 25, itemKey);
                     }
                     //במידה והתקבל מידע על ירייה
-                    if (ReceivedDataString.Contains(ServerMethod.ShootData.ToString())) {
+                    if (ReceivedDataString.Contains(ServerOpcode.ShootData.ToString())) {
                         string playerName = ReceivedDataArray[1].Split('=')[1];
 
                         //בצע ירייה עבור השחקן שירה
@@ -355,7 +367,7 @@ namespace SquadFighters.Client {
                             ShootSound.Play();
                         }
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.Revive.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.Revive.ToString())) {
                         string playerName = ReceivedDataArray[1].Split('=')[1];
 
                         if (Player.Name == playerName) {
@@ -364,16 +376,16 @@ namespace SquadFighters.Client {
                             HUD.ResetPlayerDeathCountDown();
                         }
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.PlayerPopupMessage.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.PlayerPopupMessage.ToString())) {
                         string popup = ReceivedDataArray[1].Split('=')[1];
                         HUD.AddPopup(popup, new Vector2(Graphics.PreferredBackBufferWidth - 200, Graphics.PreferredBackBufferHeight - 100), false, PopupLabelType.Regular, PopupSizeType.Medium);
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.TeamsPlayersCounts.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.TeamsPlayersCounts.ToString())) {
                         AlphaTeamPlayersCount = int.Parse(ReceivedDataArray[1].Split('=')[1]);
                         BetaTeamPlayersCount = int.Parse(ReceivedDataArray[2].Split('=')[1]);
                         OmegaTeamPlayersCount = int.Parse(ReceivedDataArray[3].Split('=')[1]);
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.TeamsCoinsCount.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.TeamsCoinsCount.ToString())) {
                         AlphaTeamCoinsCount = int.Parse(ReceivedDataArray[1].Split('=')[1]);
                         Map.AlphaTeamSpawner.Coins = AlphaTeamCoinsCount;
 
@@ -383,18 +395,18 @@ namespace SquadFighters.Client {
                         OmegaTeamCoinsCount = int.Parse(ReceivedDataArray[3].Split('=')[1]);
                         Map.OmegaTeamSpawner.Coins = OmegaTeamCoinsCount;
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.ClientCreateItem.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.ClientCreateItem.ToString())) {
                         int itemX = int.Parse(ReceivedDataArray[1].Split('=')[1]);
                         int itemY = int.Parse(ReceivedDataArray[2].Split('=')[1]);
                         string itemKey = ReceivedDataArray[3].Split('=')[1];
 
                         Map.AddItem(ItemCategory.Coin, 0, itemX, itemY, 25, itemKey);
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.JoinedMatch.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.JoinedMatch.ToString())) {
                         string playerName = ReceivedDataArray[0];
                         HUD.AddPopup(playerName + " Joined.", new Vector2(Graphics.PreferredBackBufferWidth - 200, Graphics.PreferredBackBufferHeight - 100), false, PopupLabelType.Regular, PopupSizeType.Medium);
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.PlayerKilled.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.PlayerKilled.ToString())) {
                         string playerKilledName = ReceivedDataArray[1].Split('=')[1];
                         string playerKillerName = ReceivedDataArray[2].Split('=')[1];
 
@@ -403,7 +415,7 @@ namespace SquadFighters.Client {
 
                         HUD.AddKilledPopup(playerKilledName + " Killed by " + playerKillerName, new Vector2(20, Graphics.PreferredBackBufferHeight - 100), false, PopupLabelType.Regular, PopupSizeType.Small);
                     }
-                    else if (ReceivedDataString.Contains(ServerMethod.PlayerDrown.ToString())) {
+                    else if (ReceivedDataString.Contains(ServerOpcode.PlayerDrown.ToString())) {
                         string playerDrownName = ReceivedDataArray[1].Split('=')[1];
                         string drownMessage = ReceivedDataArray[2].Split('=')[1];
 
@@ -457,7 +469,7 @@ namespace SquadFighters.Client {
                                     lock (Map.Items) {
                                         items.Remove(key); //מחק את הפריט מהמפה
                                     }
-                                    SendOneDataToServer(ServerMethod.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
+                                    SendOneDataToServer(ServerOpcode.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
                                 }
                             } //אם זה תחמושת
                             else if (items.ElementAt(i).Value is GunAmmo) {
@@ -472,7 +484,7 @@ namespace SquadFighters.Client {
                                     lock (Map.Items) {
                                         items.Remove(key); //מחק את הפריט מהמפה
                                     }
-                                    SendOneDataToServer(ServerMethod.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
+                                    SendOneDataToServer(ServerOpcode.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
                                 }
                                 else //במידה והתחמושת שנגע בה השחקן תביא לשחקן יותר תחמושת משיכול לסחוב
                                 {
@@ -486,7 +498,7 @@ namespace SquadFighters.Client {
 
                                         int itemCapacity = ((GunAmmo)(items.ElementAt(i).Value)).Capacity; //השג את כמות התחמושת שנשארה לפריט לאחר השינוי
                                         string key = items.ElementAt(i).Key; //השג את המפתח של המילון
-                                        SendOneDataToServer(ServerMethod.UpdateItemCapacity.ToString() + "=true," + itemCapacity + "," + key); //שלח עדכון לשרת על עדכון הכמות של הפריט
+                                        SendOneDataToServer(ServerOpcode.UpdateItemCapacity.ToString() + "=true," + itemCapacity + "," + key); //שלח עדכון לשרת על עדכון הכמות של הפריט
                                     }
                                 }
                             } // אם זה מגן
@@ -508,14 +520,14 @@ namespace SquadFighters.Client {
                                     lock (Map.Items) {
                                         items.Remove(key); //מחיקת הפריט
                                     }
-                                    SendOneDataToServer(ServerMethod.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
+                                    SendOneDataToServer(ServerOpcode.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
                                 }
 
                             } //לא בשימוש
                             else if (items.ElementAt(i).Value is Helmet) {
                                 string key = items.ElementAt(i).Key;
                                 items.Remove(key);
-                                SendOneDataToServer(ServerMethod.RemoveItem.ToString() + "=true," + key);
+                                SendOneDataToServer(ServerOpcode.RemoveItem.ToString() + "=true," + key);
                             }
                             else if (items.ElementAt(i).Value is Coin) {
 
@@ -528,7 +540,7 @@ namespace SquadFighters.Client {
                                 lock (Map.Items) {
                                     items.Remove(key); //מחיקת הפריט
                                 }
-                                SendOneDataToServer(ServerMethod.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
+                                SendOneDataToServer(ServerOpcode.RemoveItem.ToString() + "=true," + key); //שלח עדכון לשרת על הפריט שנמחק על מנת שיימחק גם בשרת
 
 
                             }
@@ -619,7 +631,7 @@ namespace SquadFighters.Client {
                                 ShootSound.Play();
 
                                 //וישלח עדכון לשרת שהוא ירה
-                                SendOneDataToServer(ServerMethod.ShootData.ToString() + "=true,PlayerShotName=" + Player.Name);
+                                SendOneDataToServer(ServerOpcode.ShootData.ToString() + "=true,PlayerShotName=" + Player.Name);
                             }
                             else {
                                 HUD.AddPopup("No Ammo!", new Vector2(Graphics.PreferredBackBufferWidth / 2 - 50, 100), false, PopupLabelType.Warning, PopupSizeType.Big);
@@ -722,7 +734,7 @@ namespace SquadFighters.Client {
                                     Player.ReviveCountUpString = (int)(((double)Player.ReviveTimer / (double)Player.ReviveMaxTime) * 100) + "%";
                                 }
                                 else {
-                                    SendOneDataToServer(ServerMethod.Revive.ToString() + "=true,RevivedName=" + intersectedPlayer.Name); //שולח הודעה לשרת על איזה שחקן קיבל החייאה
+                                    SendOneDataToServer(ServerOpcode.Revive.ToString() + "=true,RevivedName=" + intersectedPlayer.Name); //שולח הודעה לשרת על איזה שחקן קיבל החייאה
                                     Player.ResetRevive(); //איפוס
                                     Player.OtherPlayerRevivingName = string.Empty; //איפוס
                                     Player.ReviveCountUpString = string.Empty; //איפוס
@@ -757,7 +769,7 @@ namespace SquadFighters.Client {
                         Player.IsDrown = true;
                         HUD.PlayerIsDrown = Player.IsDrown;
                         HUD.AddKilledPopup(Player.Name + " Drown XD.", new Vector2(100, 300), false, PopupLabelType.Regular, PopupSizeType.Small);
-                        SendOneDataToServer(ServerMethod.PlayerDrown.ToString() + "=true,playerDrownName=" + Player.Name + ",DrownMessage=" + "Drown XD.");
+                        SendOneDataToServer(ServerOpcode.PlayerDrown.ToString() + "=true,playerDrownName=" + Player.Name + ",DrownMessage=" + "Drown XD.");
                     }
                 }
 
@@ -833,7 +845,7 @@ namespace SquadFighters.Client {
                                     Player.KilledBy = otherPlayer.Value.Bullets[i].Owner;
                                     Player.AddDeath();
                                     HUD.AddKilledPopup(Player.Name + " killed by " + Player.KilledBy, new Vector2(100, 300), false, PopupLabelType.Regular, PopupSizeType.Small);
-                                    SendOneDataToServer(ServerMethod.PlayerKilled.ToString() + "=true,playerKilledName=" + Player.Name + ",playerKillerName=" + Player.KilledBy);
+                                    SendOneDataToServer(ServerOpcode.PlayerKilled.ToString() + "=true,playerKilledName=" + Player.Name + ",playerKillerName=" + Player.KilledBy);
 
                                     PlayerDeathCountDownThread = new Thread(HUD.PlayerDeathCountDown);
                                     PlayerDeathCountDownThread.Start();
@@ -844,7 +856,7 @@ namespace SquadFighters.Client {
                                     if (Player.CoinsCarrying > 0) {
 
                                         Thread.Sleep(150);
-                                        SendOneDataToServer(ServerMethod.ClientCreateItem.ToString() + "=true,playerX=" + (int)Player.Position.X + ",playerY=" + (int)Player.Position.Y + ",count=" + Player.CoinsCarrying);
+                                        SendOneDataToServer(ServerOpcode.ClientCreateItem.ToString() + "=true,playerX=" + (int)Player.Position.X + ",playerY=" + (int)Player.Position.Y + ",count=" + Player.CoinsCarrying);
 
                                         Player.CoinsCarrying = 0;
                                     }
@@ -892,24 +904,24 @@ namespace SquadFighters.Client {
                 if (Player.CoinsCarrying > 0) {
                     if (Player.Rectangle.Intersects(Map.AlphaTeamSpawner.Rectangle) && Player.Team == Team.Alpha) {
                         Map.AlphaTeamSpawner.Coins += Player.CoinsCarrying;
-                        SendOneDataToServer(ServerMethod.UpdateSpawnerCoins.ToString() + "=true,AlphaTeamCoinsCount=" + Map.AlphaTeamSpawner.Coins);
+                        SendOneDataToServer(ServerOpcode.UpdateSpawnerCoins.ToString() + "=true,AlphaTeamCoinsCount=" + Map.AlphaTeamSpawner.Coins);
                         Thread.Sleep(30);
-                        SendOneDataToServer(ServerMethod.PlayerPopupMessage.ToString() + "=true,Message=" + Player.Name + "(Alpha)\nadded " + Player.CoinsCarrying + " Coins!");
+                        SendOneDataToServer(ServerOpcode.PlayerPopupMessage.ToString() + "=true,Message=" + Player.Name + "(Alpha)\nadded " + Player.CoinsCarrying + " Coins!");
 
                         Player.CoinsCarrying = 0;
                     }
                     if (Player.Rectangle.Intersects(Map.BetaTeamSpawner.Rectangle) && Player.Team == Team.Beta) {
                         Map.BetaTeamSpawner.Coins += Player.CoinsCarrying;
-                        SendOneDataToServer(ServerMethod.UpdateSpawnerCoins.ToString() + "=true,BetaTeamCoinsCount=" + Map.BetaTeamSpawner.Coins);
+                        SendOneDataToServer(ServerOpcode.UpdateSpawnerCoins.ToString() + "=true,BetaTeamCoinsCount=" + Map.BetaTeamSpawner.Coins);
                         Thread.Sleep(30);
-                        SendOneDataToServer(ServerMethod.PlayerPopupMessage.ToString() + "=true,Message=" + Player.Name + "(Beta)\nadded " + Player.CoinsCarrying + " Coins!");
+                        SendOneDataToServer(ServerOpcode.PlayerPopupMessage.ToString() + "=true,Message=" + Player.Name + "(Beta)\nadded " + Player.CoinsCarrying + " Coins!");
                         Player.CoinsCarrying = 0;
                     }
                     if (Player.Rectangle.Intersects(Map.OmegaTeamSpawner.Rectangle) && Player.Team == Team.Omega) {
                         Map.OmegaTeamSpawner.Coins += Player.CoinsCarrying;
-                        SendOneDataToServer(ServerMethod.UpdateSpawnerCoins.ToString() + "=true,OmegaTeamCoinsCount=" + Map.OmegaTeamSpawner.Coins);
+                        SendOneDataToServer(ServerOpcode.UpdateSpawnerCoins.ToString() + "=true,OmegaTeamCoinsCount=" + Map.OmegaTeamSpawner.Coins);
                         Thread.Sleep(30);
-                        SendOneDataToServer(ServerMethod.PlayerPopupMessage.ToString() + "=true,Message=" + Player.Name + "(Omega)\nadded " + Player.CoinsCarrying + " Coins!");
+                        SendOneDataToServer(ServerOpcode.PlayerPopupMessage.ToString() + "=true,Message=" + Player.Name + "(Omega)\nadded " + Player.CoinsCarrying + " Coins!");
                         Player.CoinsCarrying = 0;
                     }
                 }
@@ -1208,3 +1220,4 @@ namespace SquadFighters.Client {
         }
     }
 }
+
